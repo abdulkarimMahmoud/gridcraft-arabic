@@ -18,13 +18,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Cache Cargo Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Install WiX Toolset v5
-        run: dotnet tool install --global wix --version 5.0.2
+      - name: Install WiX Toolset v5 & Extensions
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add --global WixToolset.UI.wixext/5.0.2
+          wix extension add --global WixToolset.Util.wixext/5.0.2
 
       - name: Run Windows Packaging Script
         shell: pwsh
@@ -38,11 +54,10 @@ jobs:
           path: dist/release/*
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name || 'v0.1.0-arabic' }}
-          name: GridCraft Arabic Release ${{ github.ref_name || 'v0.1.0' }}
+          tag_name: v0.16.0-arabic
+          name: GridCraft Arabic Release v0.16.0
           draft: false
           prerelease: false
           files: dist/release/*
