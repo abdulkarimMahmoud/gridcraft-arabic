@@ -2,15 +2,25 @@ use super::show::ok_cancel;
 use super::{Dialog, Json, Key, SheetApp, json};
 
 pub(super) fn name_manager(app: &mut SheetApp, ui: &mut egui::Ui, d: &mut Dialog, open: &mut bool) {
+    let lang = app.ui.language;
     let list = app.session.run("formulas.nameManager", json!({})).unwrap_or(Json::Null);
     let names = list.as_array().cloned().unwrap_or_default();
     let selected = names.get(d.list_index).cloned();
     let field = |n: &Json, k: &str| n.get(k).and_then(Json::as_str).unwrap_or("").to_string();
-    ui.horizontal(|ui| {
-        if ui.button("New…").clicked() {
+
+    let top_layout = if lang.is_rtl() {
+        egui::Layout::right_to_left(egui::Align::Center)
+    } else {
+        egui::Layout::left_to_right(egui::Align::Center)
+    };
+
+    ui.with_layout(top_layout, |ui| {
+        let btn_new = ui.add_sized(egui::vec2(75.0, 26.0), egui::Button::new(lang.tr("New…")));
+        if btn_new.clicked() {
             app.open_dialog("defineName", json!({}));
         }
-        if ui.add_enabled(selected.is_some(), egui::Button::new("Edit…")).clicked()
+        let btn_edit = ui.add_enabled(selected.is_some(), egui::Button::new(lang.tr("Edit…")).min_size(egui::vec2(75.0, 26.0)));
+        if btn_edit.clicked()
             && let Some(n) = &selected
         {
             app.open_dialog(
@@ -21,22 +31,23 @@ pub(super) fn name_manager(app: &mut SheetApp, ui: &mut egui::Ui, d: &mut Dialog
                 }),
             );
         }
-        if ui.add_enabled(selected.is_some(), egui::Button::new("Delete")).clicked()
+        let btn_del = ui.add_enabled(selected.is_some(), egui::Button::new(lang.tr("Delete")).min_size(egui::vec2(75.0, 26.0)));
+        if btn_del.clicked()
             && let Some(n) = &selected
         {
             app.run_or_alert("formulas.deleteName", json!({"name": field(n, "name"), "scope": field(n, "scope")}));
         }
     });
-    ui.add_space(4.0);
+    ui.add_space(8.0);
     egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
-        egui::Grid::new("names").striped(true).num_columns(4).show(ui, |ui| {
-            ui.strong("Name");
-            ui.strong("Value");
-            ui.strong("Refers To");
-            ui.strong("Scope");
+        egui::Grid::new("names").striped(true).num_columns(4).spacing(egui::vec2(16.0, 8.0)).show(ui, |ui| {
+            ui.strong(lang.tr("Name"));
+            ui.strong(lang.tr("Value"));
+            ui.strong(lang.tr("Refers To"));
+            ui.strong(lang.tr("Scope"));
             ui.end_row();
             if names.is_empty() {
-                ui.label(egui::RichText::new("No names defined").italics());
+                ui.label(egui::RichText::new(lang.tr("No names defined")).italics());
                 ui.end_row();
             }
             for (i, n) in names.iter().enumerate() {
@@ -50,9 +61,15 @@ pub(super) fn name_manager(app: &mut SheetApp, ui: &mut egui::Ui, d: &mut Dialog
             }
         });
     });
-    ui.add_space(8.0);
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        if ui.button(" Close ").clicked() {
+    ui.add_space(14.0);
+    let bottom_layout = if lang.is_rtl() {
+        egui::Layout::left_to_right(egui::Align::Center)
+    } else {
+        egui::Layout::right_to_left(egui::Align::Center)
+    };
+    ui.with_layout(bottom_layout, |ui| {
+        let close_label = format!("  {}  ", lang.tr("Close"));
+        if ui.add_sized(egui::vec2(85.0, 26.0), egui::Button::new(close_label)).clicked() {
             *open = false;
         }
     });

@@ -34,6 +34,7 @@ pub(super) const TITLE_CONTROL_H: f32 = if MAC { 22.0 } else { 26.0 };
 pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let ch = TITLE_CONTROL_H;
+    let rtl = app.ui.language.is_rtl();
     egui::Panel::top("title_bar").exact_size(TITLE_BAR_H).frame(egui::Frame::NONE.fill(t.window)).show(ui, |ui| {
         let rect = ui.max_rect();
         // Dragging the empty title area moves the window.
@@ -45,18 +46,42 @@ pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
             let max = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!max));
         }
-        ui.horizontal_centered(|ui| {
+        let qat_layout = if rtl {
+            egui::Layout::right_to_left(egui::Align::Center)
+        } else {
+            egui::Layout::left_to_right(egui::Align::Center)
+        };
+        let secondary_layout = if rtl {
+            egui::Layout::left_to_right(egui::Align::Center)
+        } else {
+            egui::Layout::right_to_left(egui::Align::Center)
+        };
+        ui.with_layout(qat_layout, |ui| {
             ui.add_space(TITLE_LEFT_PAD);
-            // AutoSave toggle (saves after each change when the workbook has a file).
-            ui.label(egui::RichText::new(app.ui.language.tr("AutoSave")).font(theme::ui_font(12.5)).color(t.text_dim));
-            let on = app.ui.autosave;
-            let (r, resp) = ui.allocate_exact_size(vec2(30.0, 16.0), Sense::click());
-            ui.painter().rect_filled(r, 8.0, if on { t.accent } else { Color32::TRANSPARENT });
-            ui.painter().rect_stroke(r, 8.0, Stroke::new(1.0, if on { t.accent } else { t.text_dim }), StrokeKind::Inside);
-            let knob = if on { pos2(r.right() - 8.0, r.center().y) } else { pos2(r.left() + 8.0, r.center().y) };
-            ui.painter().circle_filled(knob, 5.0, if on { t.on_accent } else { t.text_dim });
-            if resp.on_hover_text(app.ui.language.tr("AutoSave: save after every change (workbooks saved to a file)")).clicked() {
-                app.toggle_autosave();
+            if rtl {
+                // AutoSave toggle: in RTL, knob & toggle drawn nicely with label.
+                let on = app.ui.autosave;
+                let (r, resp) = ui.allocate_exact_size(vec2(30.0, 16.0), Sense::click());
+                ui.painter().rect_filled(r, 8.0, if on { t.accent } else { Color32::TRANSPARENT });
+                ui.painter().rect_stroke(r, 8.0, Stroke::new(1.0, if on { t.accent } else { t.text_dim }), StrokeKind::Inside);
+                let knob = if on { pos2(r.left() + 8.0, r.center().y) } else { pos2(r.right() - 8.0, r.center().y) };
+                ui.painter().circle_filled(knob, 5.0, if on { t.on_accent } else { t.text_dim });
+                if resp.on_hover_text(app.ui.language.tr("AutoSave: save after every change (workbooks saved to a file)")).clicked() {
+                    app.toggle_autosave();
+                }
+                ui.label(egui::RichText::new(app.ui.language.tr("AutoSave")).font(theme::ui_font(12.5)).color(t.text_dim));
+            } else {
+                // AutoSave toggle (saves after each change when the workbook has a file).
+                ui.label(egui::RichText::new(app.ui.language.tr("AutoSave")).font(theme::ui_font(12.5)).color(t.text_dim));
+                let on = app.ui.autosave;
+                let (r, resp) = ui.allocate_exact_size(vec2(30.0, 16.0), Sense::click());
+                ui.painter().rect_filled(r, 8.0, if on { t.accent } else { Color32::TRANSPARENT });
+                ui.painter().rect_stroke(r, 8.0, Stroke::new(1.0, if on { t.accent } else { t.text_dim }), StrokeKind::Inside);
+                let knob = if on { pos2(r.right() - 8.0, r.center().y) } else { pos2(r.left() + 8.0, r.center().y) };
+                ui.painter().circle_filled(knob, 5.0, if on { t.on_accent } else { t.text_dim });
+                if resp.on_hover_text(app.ui.language.tr("AutoSave: save after every change (workbooks saved to a file)")).clicked() {
+                    app.toggle_autosave();
+                }
             }
             ui.add_space(6.0);
             let __k = icon_button(ui, Icon::Home, t.text_dim, "Home", vec2(26.0, ch));
@@ -74,7 +99,7 @@ pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
             // the document (an action that spans several calls is still running).
             let can_undo = gridcraft_engine::cmd::can_undo(&app.session).is_ok();
             let can_redo = gridcraft_engine::cmd::can_redo(&app.session).is_ok();
-            // Named and marked enabled or not for assistive technology (and the UI tests).
+            // In RTL, the natural flow from right to left puts Undo then Redo:
             let undo = icon_button(ui, Icon::Undo, if can_undo { t.text_dim } else { t.text_disabled }, "Undo", vec2(26.0, ch));
             undo.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, can_undo, "Undo"));
             if undo.clicked() && can_undo {
@@ -118,13 +143,23 @@ pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
                     app.print_now(json!({}));
                 }
             });
-            let left_end = ui.min_rect().right();
-            let right = ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let qat_bound = if rtl { ui.min_rect().left() } else { ui.min_rect().right() };
+            let other_bound = ui.with_layout(secondary_layout, |ui| {
                 ui.add_space(8.0);
-                let __k = icon_button(ui, Icon::Search, t.text_dim, "Search commands", vec2(28.0, ch));
-                control_keytip(app, ui, &__k, "commandSearch");
+                // Quick light/dark switch (#194); right-click offers System as well. The same
+                // choice lives in File › Display theme and the View tab.
+                let lang = app.ui.language;
+                let theme = icon_button(ui, Icon::Appearance, t.text_dim, "Dark Mode", vec2(28.0, 26.0));
+                let dark = ui.ctx().theme() == egui::Theme::Dark;
+                theme.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, dark, lang.tr("Dark Mode")));
+                if theme.clicked() {
+                    act(app, "view.darkMode", json!({}));
+                }
+                theme.context_menu(|ui| theme_choices(app, ui));
+                let __k = icon_button(ui, Icon::Comment, t.text_dim, "Comments", vec2(28.0, ch));
+                control_keytip(app, ui, &__k, "comments");
                 if __k.clicked() {
-                    app.open_dialog("commandSearch", json!({}));
+                    app.open_dialog("comments", json!({}));
                 }
                 let share = small_button(ui, Icon::Share, "Share", "Share: export or save a copy", true);
                 egui::Popup::menu(&share).show(|ui| {
@@ -139,27 +174,18 @@ pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
                         }
                     }
                 });
-                let __k = icon_button(ui, Icon::Comment, t.text_dim, "Comments", vec2(28.0, ch));
-                control_keytip(app, ui, &__k, "comments");
+                let __k = icon_button(ui, Icon::Search, t.text_dim, "Search commands", vec2(28.0, ch));
+                control_keytip(app, ui, &__k, "commandSearch");
                 if __k.clicked() {
-                    app.open_dialog("comments", json!({}));
+                    app.open_dialog("commandSearch", json!({}));
                 }
-                // Quick light/dark switch (#194); right-click offers System as well. The same
-                // choice lives in File › Display theme and the View tab.
-                let lang = app.ui.language;
-                let theme = icon_button(ui, Icon::Appearance, t.text_dim, "Dark Mode", vec2(28.0, 26.0));
-                let dark = ui.ctx().theme() == egui::Theme::Dark;
-                theme.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, dark, lang.tr("Dark Mode")));
-                if theme.clicked() {
-                    act(app, "view.darkMode", json!({}));
-                }
-                theme.context_menu(|ui| theme_choices(app, ui));
-                ui.min_rect().left()
+                if rtl { ui.min_rect().right() } else { ui.min_rect().left() }
             });
             // Centred title, cut with "…" so it never runs under the controls on either side.
             let title = app.session.active().map(|d| d.display_title()).unwrap_or_default();
             let dirty = app.session.active().is_some_and(|d| d.is_dirty());
-            let max_w = title_max_width(rect.center().x, left_end, right.inner);
+            let (left_end, right_start) = if rtl { (other_bound.inner, qat_bound) } else { (qat_bound, other_bound.inner) };
+            let max_w = title_max_width(rect.center().x, left_end, right_start);
             paint_title(ui, rect.center(), &title, dirty, max_w, t.text);
         });
     });

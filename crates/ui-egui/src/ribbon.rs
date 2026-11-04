@@ -60,7 +60,13 @@ pub fn show(app: &mut SheetApp, ui: &mut Ui) {
             // Tabs row.
             let tabs_rect = Rect::from_min_size(ui.cursor().min, vec2(ui.available_width(), 32.0));
             ui.scope_builder(egui::UiBuilder::new().max_rect(tabs_rect), |ui| {
-                ui.horizontal(|ui| {
+                let rtl = app.ui.language.is_rtl();
+                let tabs_layout = if rtl {
+                    egui::Layout::right_to_left(egui::Align::Center)
+                } else {
+                    egui::Layout::left_to_right(egui::Align::Center)
+                };
+                ui.with_layout(tabs_layout, |ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     ui.add_space(8.0);
                     if app.chrome.file_tab {
@@ -139,24 +145,53 @@ pub fn show(app: &mut SheetApp, ui: &mut Ui) {
                     area = area.horizontal_scroll_offset(x);
                 }
                 let scroll = area.show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
-                        match app.ui.ribbon_tab.as_str() {
-                            "Home" => home(app, ui),
-                            "Insert" => insert(app, ui),
-                            "Draw" => draw(app, ui),
-                            "Page Layout" => page_layout(app, ui),
-                            "Formulas" => formulas(app, ui),
-                            "Data" => data(app, ui),
-                            "Review" => review(app, ui),
-                            "View" => view(app, ui),
-                            "Automate" => automate(app, ui),
-                            "Table Design" => table_design(app, ui),
-                            "Chart Design" => chart_design(app, ui),
-                            crate::paper_view::TAB => crate::paper_view::ribbon_tab(app, ui),
-                            _ => home(app, ui),
-                        }
-                    });
+                    if app.ui.language.is_rtl() {
+                        let prev_w = ui.ctx().data_mut(|d| d.get_temp::<f32>(egui::Id::unique("ribbon_content_w")).unwrap_or(750.0));
+                        let content_w = ui.available_width();
+                        let pad = (content_w - prev_w).max(0.0);
+                        let inner_resp = ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
+                            if pad > 0.0 {
+                                ui.add_space(pad);
+                            }
+                            match app.ui.ribbon_tab.as_str() {
+                                "Home" => home(app, ui),
+                                "Insert" => insert(app, ui),
+                                "Draw" => draw(app, ui),
+                                "Page Layout" => page_layout(app, ui),
+                                "Formulas" => formulas(app, ui),
+                                "Data" => data(app, ui),
+                                "Review" => review(app, ui),
+                                "View" => view(app, ui),
+                                "Automate" => automate(app, ui),
+                                "Table Design" => table_design(app, ui),
+                                "Chart Design" => chart_design(app, ui),
+                                crate::paper_view::TAB => crate::paper_view::ribbon_tab(app, ui),
+                                _ => home(app, ui),
+                            }
+                        });
+                        let measured_w = inner_resp.response.rect.width() - pad;
+                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::unique("ribbon_content_w"), measured_w));
+                    } else {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
+                            match app.ui.ribbon_tab.as_str() {
+                                "Home" => home(app, ui),
+                                "Insert" => insert(app, ui),
+                                "Draw" => draw(app, ui),
+                                "Page Layout" => page_layout(app, ui),
+                                "Formulas" => formulas(app, ui),
+                                "Data" => data(app, ui),
+                                "Review" => review(app, ui),
+                                "View" => view(app, ui),
+                                "Automate" => automate(app, ui),
+                                "Table Design" => table_design(app, ui),
+                                "Chart Design" => chart_design(app, ui),
+                                crate::paper_view::TAB => crate::paper_view::ribbon_tab(app, ui),
+                                _ => home(app, ui),
+                            }
+                        });
+                    }
                 });
                 scroll_arrows(ui, &t, tab.as_str(), scroll);
             });

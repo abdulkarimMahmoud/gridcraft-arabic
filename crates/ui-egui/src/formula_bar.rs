@@ -501,7 +501,26 @@ pub fn editor_widget(app: &mut SheetApp, ui: &mut egui::Ui, id: egui::Id, font: 
         ed.keep_selection = true;
     }
     let synced = mine && !dialog_open && (ed.request_focus || ed.sync_caret);
-    let edit = if multiline || ed.text.contains('\n') { TextEdit::multiline(&mut ed.text) } else { TextEdit::singleline(&mut ed.text) };
+
+    // Auto-direction: check content direction before borrowing ed.text mutably:
+    let trimmed = ed.text.trim_start();
+    let is_arabic = trimmed.chars().any(|c| ('\u{0600}'..='\u{06FF}').contains(&c) || ('\u{FB50}'..='\u{FDFF}').contains(&c) || ('\u{FE70}'..='\u{FEFF}').contains(&c));
+    let is_latin_or_formula = trimmed.starts_with('=') || trimmed.chars().take(3).any(|c| c.is_ascii_alphabetic());
+    let is_multiline = multiline || ed.text.contains('\n');
+
+    let is_rtl_sheet = app.session.active().and_then(|d| d.wb.active()).is_some_and(|s| s.right_to_left);
+    let align = if is_arabic && !is_latin_or_formula {
+        egui::Align2::RIGHT_CENTER
+    } else if is_latin_or_formula {
+        egui::Align2::LEFT_CENTER
+    } else if is_rtl_sheet || app.ui.language.is_rtl() {
+        egui::Align2::RIGHT_CENTER
+    } else {
+        egui::Align2::LEFT_CENTER
+    };
+
+    let mut edit = if is_multiline { TextEdit::multiline(&mut ed.text) } else { TextEdit::singleline(&mut ed.text) };
+    edit = edit.align(align);
     let edit = edit.interactive(!dialog_open);
     let caret_index = ed.caret;
     // The in-cell editor grows with its text and never scrolls, so the field keeps its whole width

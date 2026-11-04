@@ -25,8 +25,66 @@ const ACCOUNTING_SYMBOLS: &[(&str, &str)] = &[
 
 /// Draws the Home tab: clipboard/paste menu, font, alignment, number, style, cell and editing commands with keytips.
 pub(super) fn home(app: &mut SheetApp, ui: &mut Ui) {
+    if app.ui.language.is_rtl() {
+        home_editing(app, ui);
+        sep(ui);
+        home_cells(app, ui);
+        sep(ui);
+        home_styles(app, ui);
+        sep(ui);
+        home_number(app, ui);
+        sep(ui);
+        home_alignment(app, ui);
+        sep(ui);
+        home_font(app, ui);
+        sep(ui);
+        home_clipboard(app, ui);
+    } else {
+        home_clipboard(app, ui);
+        sep(ui);
+        home_font(app, ui);
+        sep(ui);
+        home_alignment(app, ui);
+        sep(ui);
+        home_number(app, ui);
+        sep(ui);
+        home_styles(app, ui);
+        sep(ui);
+        home_cells(app, ui);
+        sep(ui);
+        home_editing(app, ui);
+    }
+}
+
+fn home_clipboard(app: &mut SheetApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
-    let st = active_style(app);
+    if app.ui.language.is_rtl() {
+        ui.vertical(|ui| {
+            let __k = icon_button(ui, Icon::Cut, t.text, "Cut", vec2(26.0, 23.0));
+            control_keytip(app, ui, &__k, "edit.cut");
+            if __k.clicked() {
+                app.copy_to_clipboard(ui.ctx(), "edit.cut");
+            }
+            let __k = icon_button(ui, Icon::Copy, t.text, "Copy", vec2(26.0, 23.0));
+            control_keytip(app, ui, &__k, "edit.copy");
+            if __k.clicked() {
+                app.copy_to_clipboard(ui.ctx(), "edit.copy");
+            }
+            let fp_on = app.session.format_painter.is_some();
+            let fp = toggle_button(ui, Icon::Brush, fp_on, "Format Painter (double-click to keep it on)");
+            fp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, ui.is_enabled(), fp_on, "Format Painter"));
+            control_keytip(app, ui, &fp, "edit.formatPainter");
+            if fp.double_clicked() {
+                act(app, "edit.formatPainter", json!({"sticky": true}));
+            } else if fp.clicked() {
+                if fp_on {
+                    app.session.format_painter = None;
+                } else {
+                    act(app, "edit.formatPainter", json!({}));
+                }
+            }
+        });
+    }
     // Clipboard
     let paste = big_button(ui, Icon::Paste, "Paste", "Paste", true);
     paste.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), "Paste"));
@@ -79,32 +137,38 @@ pub(super) fn home(app: &mut SheetApp, ui: &mut Ui) {
             ],
         );
     });
-    ui.vertical(|ui| {
-        let __k = icon_button(ui, Icon::Cut, t.text, "Cut", vec2(26.0, 23.0));
-        control_keytip(app, ui, &__k, "edit.cut");
-        if __k.clicked() {
-            app.copy_to_clipboard(ui.ctx(), "edit.cut");
-        }
-        let __k = icon_button(ui, Icon::Copy, t.text, "Copy", vec2(26.0, 23.0));
-        control_keytip(app, ui, &__k, "edit.copy");
-        if __k.clicked() {
-            app.copy_to_clipboard(ui.ctx(), "edit.copy");
-        }
-        let fp_on = app.session.format_painter.is_some();
-        let fp = toggle_button(ui, Icon::Brush, fp_on, "Format Painter (double-click to keep it on)");
-        fp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, ui.is_enabled(), fp_on, "Format Painter"));
-        control_keytip(app, ui, &fp, "edit.formatPainter");
-        if fp.double_clicked() {
-            act(app, "edit.formatPainter", json!({"sticky": true}));
-        } else if fp.clicked() {
-            if fp_on {
-                app.session.format_painter = None;
-            } else {
-                act(app, "edit.formatPainter", json!({}));
+    if !app.ui.language.is_rtl() {
+        ui.vertical(|ui| {
+            let __k = icon_button(ui, Icon::Cut, t.text, "Cut", vec2(26.0, 23.0));
+            control_keytip(app, ui, &__k, "edit.cut");
+            if __k.clicked() {
+                app.copy_to_clipboard(ui.ctx(), "edit.cut");
             }
-        }
-    });
-    sep(ui);
+            let __k = icon_button(ui, Icon::Copy, t.text, "Copy", vec2(26.0, 23.0));
+            control_keytip(app, ui, &__k, "edit.copy");
+            if __k.clicked() {
+                app.copy_to_clipboard(ui.ctx(), "edit.copy");
+            }
+            let fp_on = app.session.format_painter.is_some();
+            let fp = toggle_button(ui, Icon::Brush, fp_on, "Format Painter (double-click to keep it on)");
+            fp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, ui.is_enabled(), fp_on, "Format Painter"));
+            control_keytip(app, ui, &fp, "edit.formatPainter");
+            if fp.double_clicked() {
+                act(app, "edit.formatPainter", json!({"sticky": true}));
+            } else if fp.clicked() {
+                if fp_on {
+                    app.session.format_painter = None;
+                } else {
+                    act(app, "edit.formatPainter", json!({}));
+                }
+            }
+        });
+    }
+}
+
+fn home_font(app: &mut SheetApp, ui: &mut Ui) {
+    let t = Tokens::get(ui.ctx());
+    let st = active_style(app);
     // Font
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
@@ -239,7 +303,11 @@ pub(super) fn home(app: &mut SheetApp, ui: &mut Ui) {
                 });
         });
     });
-    sep(ui);
+}
+
+fn home_alignment(app: &mut SheetApp, ui: &mut Ui) {
+    let t = Tokens::get(ui.ctx());
+    let st = active_style(app);
     // Alignment
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
@@ -323,7 +391,11 @@ pub(super) fn home(app: &mut SheetApp, ui: &mut Ui) {
             });
         });
     });
-    sep(ui);
+}
+
+fn home_number(app: &mut SheetApp, ui: &mut Ui) {
+    let t = Tokens::get(ui.ctx());
+    let st = active_style(app);
     // Number
     ui.vertical(|ui| {
         number_combo(app, ui, &st);
@@ -361,7 +433,9 @@ pub(super) fn home(app: &mut SheetApp, ui: &mut Ui) {
             }
         });
     });
-    sep(ui);
+}
+
+fn home_styles(app: &mut SheetApp, ui: &mut Ui) {
     // Styles
     let cf = big_button(ui, Icon::CondFormat, "Conditional\nFormatting", "Conditional Formatting", true);
     anchor_keytip(app, ui, &cf, &["home.conditionalFormat", "home.manageRules", "home.clearRules"]);
@@ -372,7 +446,9 @@ pub(super) fn home(app: &mut SheetApp, ui: &mut Ui) {
     let cs = big_button(ui, Icon::CellStyles, "Cell\nStyles", "Cell Styles", true);
     anchor_keytip(app, ui, &cs, &["home.newCellStyle"]);
     egui::Popup::menu(&cs).show(|ui| cell_style_gallery(app, ui));
-    sep(ui);
+}
+
+fn home_cells(app: &mut SheetApp, ui: &mut Ui) {
     // Cells
     ui.vertical(|ui| {
         let ins = small_button(ui, Icon::Insert, "Insert", "Insert", true);
@@ -471,7 +547,9 @@ pub(super) fn home(app: &mut SheetApp, ui: &mut Ui) {
             );
         });
     });
-    sep(ui);
+}
+
+fn home_editing(app: &mut SheetApp, ui: &mut Ui) {
     // Editing
     ui.vertical(|ui| {
         ui.horizontal(|ui| {

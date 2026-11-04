@@ -2,6 +2,22 @@ use super::controls::{act, anchor_keytip, checkbox_on, control_keytip, invoke, k
 use super::{Color32, Icon, Sense, SheetApp, Tokens, Ui, big_button, json, keytip_table, vec2};
 
 pub(super) fn page_layout(app: &mut SheetApp, ui: &mut Ui) {
+    if app.ui.language.is_rtl() {
+        page_layout_sheet_options(app, ui);
+        sep(ui);
+        page_layout_page_setup(app, ui);
+        sep(ui);
+        page_layout_themes(app, ui);
+    } else {
+        page_layout_themes(app, ui);
+        sep(ui);
+        page_layout_page_setup(app, ui);
+        sep(ui);
+        page_layout_sheet_options(app, ui);
+    }
+}
+
+fn page_layout_themes(app: &mut SheetApp, ui: &mut Ui) {
     let th = big_button(ui, Icon::Theme, "Themes", "Themes", true);
     anchor_keytip(app, ui, &th, &["pageLayout.theme"]);
     egui::Popup::menu(&th).show(|ui| {
@@ -17,7 +33,9 @@ pub(super) fn page_layout(app: &mut SheetApp, ui: &mut Ui) {
             });
         }
     });
-    sep(ui);
+}
+
+fn page_layout_page_setup(app: &mut SheetApp, ui: &mut Ui) {
     let m = big_button(ui, Icon::Margins, "Margins", "Margins", true);
     for sequence in keytip_table::group_extension(app.keytips.prefix().unwrap_or_default(), &["pageLayout.margins", "dialog:pageSetup"]) {
         keytip(app, ui, sequence, m.rect.center_bottom());
@@ -106,7 +124,9 @@ pub(super) fn page_layout(app: &mut SheetApp, ui: &mut Ui) {
     if __k.clicked() {
         app.open_dialog("pageSetup", json!({"tab": "Sheet"}));
     }
-    sep(ui);
+}
+
+fn page_layout_sheet_options(app: &mut SheetApp, ui: &mut Ui) {
     let sh = app
         .session
         .active()

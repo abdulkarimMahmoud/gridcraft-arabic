@@ -181,6 +181,7 @@ pub fn show(app: &mut SheetApp, ctx: &egui::Context) {
                 return;
             }
             ui.set_min_width(width - 20.0);
+            let lang = crate::i18n::current(ui.ctx());
             match d.name.as_str() {
                 "formatCells" => format_cells(app, ui, &mut d, &mut confirm),
                 "dataValidation" => data_validation_form(app, ui, &mut d, &mut confirm, &mut open),
@@ -334,13 +335,49 @@ pub fn show(app: &mut SheetApp, ctx: &egui::Context) {
                     }
                 }
                 "saveChanges" => {
-                    ui.label(format!("Do you want to save the changes you made to {}?", d.values.get("title").and_then(Json::as_str).unwrap_or("this workbook")));
+                    let book_title = d.values.get("title").and_then(Json::as_str).unwrap_or("this workbook");
+                    let question_tpl = lang.tr("Do you want to save the changes you made to {title}?");
+                    let question = if question_tpl.contains("{title}") {
+                        question_tpl.replace("{title}", book_title)
+                    } else {
+                        format!("Do you want to save the changes you made to {book_title}?")
+                    };
+                    ui.add_space(8.0);
+                    let text_align = if lang.is_rtl() { egui::Align::RIGHT } else { egui::Align::LEFT };
+                    ui.with_layout(egui::Layout::top_down(text_align), |ui| {
+                        ui.label(egui::RichText::new(question).font(crate::theme::ui_font(14.0)));
+                    });
+                    ui.add_space(20.0);
                     let quitting = d.values.get("quit").and_then(Json::as_bool) == Some(true);
-                    ui.horizontal(|ui| {
-                        for (label, answer) in
-                            [("Don't Save", crate::SaveAnswer::DontSave), ("Cancel", crate::SaveAnswer::Cancel), ("Save", crate::SaveAnswer::Save)]
-                        {
-                            if ui.button(label).clicked() && app.answer_save_changes(answer, quitting, ui.ctx()) {
+                    
+                    // In RTL, dialog action buttons sit on the bottom left (or reverse order starting from right).
+                    // In modern dialogs, primary action (Save) is emphasized.
+                    let btn_layout = if lang.is_rtl() {
+                        egui::Layout::left_to_right(egui::Align::Center)
+                    } else {
+                        egui::Layout::right_to_left(egui::Align::Center)
+                    };
+                    ui.with_layout(btn_layout, |ui| {
+                        ui.spacing_mut().item_spacing.x = 8.0;
+                        if lang.is_rtl() {
+                            // Cancel, Don't Save, Save
+                            if ui.add_sized(egui::vec2(90.0, 28.0), egui::Button::new(lang.tr("Cancel"))).clicked() && app.answer_save_changes(crate::SaveAnswer::Cancel, quitting, ui.ctx()) {
+                                open = false;
+                            }
+                            if ui.add_sized(egui::vec2(100.0, 28.0), egui::Button::new(lang.tr("Don't Save"))).clicked() && app.answer_save_changes(crate::SaveAnswer::DontSave, quitting, ui.ctx()) {
+                                open = false;
+                            }
+                            if ui.add_sized(egui::vec2(90.0, 28.0), egui::Button::new(egui::RichText::new(lang.tr("Save")).strong())).clicked() && app.answer_save_changes(crate::SaveAnswer::Save, quitting, ui.ctx()) {
+                                open = false;
+                            }
+                        } else {
+                            if ui.add_sized(egui::vec2(90.0, 28.0), egui::Button::new(egui::RichText::new(lang.tr("Save")).strong())).clicked() && app.answer_save_changes(crate::SaveAnswer::Save, quitting, ui.ctx()) {
+                                open = false;
+                            }
+                            if ui.add_sized(egui::vec2(100.0, 28.0), egui::Button::new(lang.tr("Don't Save"))).clicked() && app.answer_save_changes(crate::SaveAnswer::DontSave, quitting, ui.ctx()) {
+                                open = false;
+                            }
+                            if ui.add_sized(egui::vec2(90.0, 28.0), egui::Button::new(lang.tr("Cancel"))).clicked() && app.answer_save_changes(crate::SaveAnswer::Cancel, quitting, ui.ctx()) {
                                 open = false;
                             }
                         }
@@ -486,19 +523,35 @@ pub fn show(app: &mut SheetApp, ctx: &egui::Context) {
 }
 
 pub(super) fn ok_cancel(ui: &mut egui::Ui, confirm: &mut bool, open: &mut bool) {
-    ui.add_space(8.0);
+    ui.add_space(14.0);
     // A row as tall as the buttons: a right-to-left layout straight in the window takes all the
     // height it is offered, which stretched every form dialog to the screen's height.
     ui.horizontal(|ui| {
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let lang = crate::i18n::current(ui.ctx());
-            let t = crate::theme::Tokens::get(ui.ctx());
-            let ok = ui.add(egui::Button::new(egui::RichText::new(format!("   {}   ", lang.tr("OK"))).color(t.on_accent)).fill(t.accent));
-            if ok.clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
-                *confirm = true;
-            }
-            if ui.button(format!(" {} ", lang.tr("Cancel"))).clicked() {
-                *open = false;
+        let lang = crate::i18n::current(ui.ctx());
+        let t = crate::theme::Tokens::get(ui.ctx());
+        let layout = if lang.is_rtl() {
+            egui::Layout::left_to_right(egui::Align::Center)
+        } else {
+            egui::Layout::right_to_left(egui::Align::Center)
+        };
+        ui.with_layout(layout, |ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            if lang.is_rtl() {
+                if ui.add_sized(egui::vec2(85.0, 26.0), egui::Button::new(lang.tr("Cancel"))).clicked() {
+                    *open = false;
+                }
+                let ok = ui.add_sized(egui::vec2(85.0, 26.0), egui::Button::new(egui::RichText::new(lang.tr("OK")).strong().color(t.on_accent)).fill(t.accent));
+                if ok.clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
+                    *confirm = true;
+                }
+            } else {
+                let ok = ui.add_sized(egui::vec2(85.0, 26.0), egui::Button::new(egui::RichText::new(lang.tr("OK")).strong().color(t.on_accent)).fill(t.accent));
+                if ok.clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
+                    *confirm = true;
+                }
+                if ui.add_sized(egui::vec2(85.0, 26.0), egui::Button::new(lang.tr("Cancel"))).clicked() {
+                    *open = false;
+                }
             }
         })
     });
@@ -566,11 +619,15 @@ pub(super) fn form_fields(app: &SheetApp, ui: &mut egui::Ui, d: &mut Dialog) {
                             .map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| if v.is_null() { String::new() } else { v.to_string() }))
                             .unwrap_or_default();
                         let multiline = key == "text";
-                        let r = if multiline {
-                            ui.add(egui::TextEdit::multiline(&mut s).desired_rows(4).desired_width(320.0)).labelled_by(label.id)
+                        let mut edit = if multiline {
+                            egui::TextEdit::multiline(&mut s).desired_rows(4).desired_width(320.0)
                         } else {
-                            ui.add(egui::TextEdit::singleline(&mut s).desired_width(320.0)).labelled_by(label.id)
+                            egui::TextEdit::singleline(&mut s).desired_width(320.0)
                         };
+                        if lang.is_rtl() {
+                            edit = edit.align(egui::Align2::RIGHT_CENTER);
+                        }
+                        let r = ui.add(edit).labelled_by(label.id);
                         take_first_focus(d, &r);
                         if r.changed() {
                             d.values.insert(key.into(), json!(s));
@@ -591,7 +648,11 @@ pub(super) fn form_fields(app: &SheetApp, ui: &mut egui::Ui, d: &mut Dialog) {
                     ui.vertical(|ui| {
                         let label = ui.label(lang.tr(label));
                         let mut s = d.values.get(key).and_then(Json::as_str).unwrap_or_default().to_string();
-                        if ui.add(egui::TextEdit::singleline(&mut s).password(!d.show_password).desired_width(320.0)).labelled_by(label.id).changed()
+                        let mut pw_edit = egui::TextEdit::singleline(&mut s).password(!d.show_password).desired_width(320.0);
+                        if lang.is_rtl() {
+                            pw_edit = pw_edit.align(egui::Align2::RIGHT_CENTER);
+                        }
+                        if ui.add(pw_edit).labelled_by(label.id).changed()
                         {
                             d.values.insert(key.into(), json!(s));
                         }

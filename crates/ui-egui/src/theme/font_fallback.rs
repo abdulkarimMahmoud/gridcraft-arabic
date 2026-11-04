@@ -57,6 +57,7 @@ pub(super) fn fallback_faces(han: HanOrder) -> Vec<(&'static str, Vec<(String, u
         ("sys-thai", thai()),
         ("sys-lao", lao()),
         ("sys-hebrew", hebrew()),
+        ("sys-arabic", arabic()),
         ("sys-symbols", symbols()),
         ("sys-symbols-2", symbols_more()),
     ]
@@ -295,4 +296,20 @@ pub fn symbol_face_installed() -> bool {
     {
         false
     }
+}
+
+/// Arabic faces: Segoe UI / Arial / Tahoma on Windows, Geeza Pro / Baghdad on macOS, Noto Sans Arabic on Linux.
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) fn arabic() -> Vec<(String, u32)> {
+    script_fonts(
+        &["seguiui.ttf", "tahoma.ttf", "arial.ttf", "tradbdo.ttf"],
+        &[
+            "/System/Library/Fonts/Supplemental/GeezaPro.ttc",
+            "/System/Library/Fonts/GeezaPro.ttc",
+            "/System/Library/Fonts/Supplemental/Baghdad.ttc",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+        ],
+        &["noto/NotoSansArabic-Regular.ttf", "NotoSansArabic-Regular.ttf", "dejavu/DejaVuSans.ttf"],
+        "/usr/share/fonts/google-noto-vf/NotoSansArabic[wght].ttf",
+    )
 }

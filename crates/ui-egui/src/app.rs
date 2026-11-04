@@ -147,6 +147,9 @@ impl SheetApp {
         // (`doc_windows` decides what having none left means).
         if self.session.active().is_none() && !self.native_windows {
             self.session.new_workbook();
+            if self.ui.language.is_rtl() {
+                let _ = self.session.execute("view.rightToLeft", serde_json::json!({"on": true}));
+            }
         }
         self.follow_active_window();
     }

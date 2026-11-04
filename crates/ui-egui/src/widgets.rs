@@ -586,7 +586,12 @@ pub fn message_box(app: &mut SheetApp, ctx: &egui::Context) {
     let mut close = false;
     egui::Modal::new(egui::Id::unique("message_box")).show(ctx, |ui| {
         ui.set_width(380.0);
-        ui.horizontal(|ui| {
+        let content_layout = if app.ui.language.is_rtl() {
+            egui::Layout::right_to_left(egui::Align::Center)
+        } else {
+            egui::Layout::left_to_right(egui::Align::Center)
+        };
+        ui.with_layout(content_layout, |ui| {
             let (r, _) = ui.allocate_exact_size(vec2(36.0, 36.0), Sense::hover());
             let t = Tokens::get(ui.ctx());
             ui.painter().circle_filled(r.center(), 16.0, t.warning);
@@ -596,9 +601,20 @@ pub fn message_box(app: &mut SheetApp, ctx: &egui::Context) {
                 ui.add(egui::Label::new(msg).wrap());
             });
         });
-        ui.add_space(8.0);
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("  OK  ").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Escape)) {
+        ui.add_space(14.0);
+        let ok_text = app.ui.language.tr("OK");
+        let button_layout = if app.ui.language.is_rtl() {
+            egui::Layout::left_to_right(egui::Align::Center)
+        } else {
+            egui::Layout::right_to_left(egui::Align::Center)
+        };
+        ui.with_layout(button_layout, |ui| {
+            let t = Tokens::get(ui.ctx());
+            let ok_btn = ui.add_sized(
+                egui::vec2(90.0, 28.0),
+                egui::Button::new(egui::RichText::new(ok_text).strong().color(t.on_accent)).fill(t.accent),
+            );
+            if ok_btn.clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Escape)) {
                 close = true;
             }
         });

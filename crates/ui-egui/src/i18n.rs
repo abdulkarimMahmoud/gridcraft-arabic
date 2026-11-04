@@ -9,6 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 
+mod ar;
 mod cs;
 mod de;
 mod el;
@@ -34,6 +35,7 @@ mod zh;
 pub enum Language {
     #[default]
     En,
+    Ar,
     Es,
     El,
     Zh,
@@ -56,8 +58,9 @@ pub enum Language {
 }
 
 impl Language {
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 20] = [
         Self::En,
+        Self::Ar,
         Self::Es,
         Self::El,
         Self::Zh,
@@ -91,6 +94,7 @@ impl Language {
     pub fn name(self) -> &'static str {
         match self {
             Self::En => "English",
+            Self::Ar => "العربية",
             Self::Es => "Español",
             Self::El => "Ελληνικά",
             Self::Zh => "简体中文",
@@ -116,6 +120,7 @@ impl Language {
     pub const fn code(self) -> &'static str {
         match self {
             Self::En => "en",
+            Self::Ar => "ar",
             Self::Es => "es",
             Self::El => "el",
             Self::Zh => "zh",
@@ -150,6 +155,7 @@ impl Language {
     fn from_tag(tag: &str) -> Option<Self> {
         match tag.trim().split(['-', '_']).next()?.to_ascii_lowercase().as_str() {
             "en" => Some(Self::En),
+            "ar" => Some(Self::Ar),
             "es" => Some(Self::Es),
             "el" => Some(Self::El),
             "zh" => Some(Self::Zh),
@@ -174,6 +180,11 @@ impl Language {
 
     /// The system's preferred interface language, best effort; English when it is unknown or
     /// unsupported. Used as the first-run default while nothing is saved.
+    /// Whether this interface language uses right-to-left text and layout.
+    pub fn is_rtl(self) -> bool {
+        matches!(self, Self::Ar)
+    }
+
     pub fn system() -> Self {
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -196,6 +207,7 @@ impl Language {
     pub fn tr(self, text: &str) -> &str {
         let translated = match self {
             Self::En => None,
+            Self::Ar => ar::translate(text),
             Self::Es => es::translate(text),
             Self::El => el::translate(text),
             Self::Ja => ja::translate(text),
@@ -419,6 +431,8 @@ mod tests {
 
     #[test]
     fn tags_reduce_to_supported_languages() {
+        assert_eq!(Language::from_tag("ar-SA"), Some(Language::Ar));
+        assert_eq!(Language::parse("ar"), Some(Language::Ar));
         assert_eq!(Language::from_tag("ja-JP"), Some(Language::Ja));
         assert_eq!(Language::from_tag("en_US"), Some(Language::En));
         assert_eq!(Language::from_tag("es_MX"), Some(Language::Es));

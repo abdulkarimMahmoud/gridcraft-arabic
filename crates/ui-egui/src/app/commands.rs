@@ -130,7 +130,11 @@ impl SheetApp {
             // A refused cell draft already shows its own message (with the rule's title).
             Err(e) if self.message.as_ref().is_some_and(|(_, m)| *m == e) => {}
             Err(e) => self.alert(e),
-            Ok(_) => {}
+            Ok(_) => {
+                if id == "file.new" && self.ui.language.is_rtl() {
+                    let _ = self.run("view.rightToLeft", json!({"on": true}));
+                }
+            }
         }
     }
 
@@ -227,6 +231,9 @@ impl SheetApp {
                 match i18n::Language::parse(code) {
                     Some(l) => {
                         self.ui.language = l;
+                        if l.is_rtl() {
+                            let _ = self.run("view.rightToLeft", json!({"on": true}));
+                        }
                         Ok(json!({"language": l}))
                     }
                     None => Err(format!("unknown language {code:?} (use one of {})", i18n::Language::code_list(", "))),

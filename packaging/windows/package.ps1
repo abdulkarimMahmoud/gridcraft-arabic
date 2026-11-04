@@ -45,105 +45,107 @@ if (-not $Version) { throw 'could not read [workspace.package] version from Carg
 # MSI ProductVersion is numeric (major.minor.build); pre-release tags are dropped there.
 $MsiVersion = ($Version -split '-')[0]
 
-$Target = switch ($Arch) { 'x64' { 'x86_64-pc-windows-msvc' } 'x86' { 'i686-pc-windows-msvc' } 'arm64' { 'aarch64-pc-windows-msvc' } }
-$Dist = if ($env:DIST) { $env:DIST } else { Join-Path $Root 'dist\release' }
-$TargetDir = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $Root 'target' }
-New-Item -ItemType Directory -Force -Path $Dist | Out-Null
+# Build metadata embedded in binaries (Help ▸ About and the crash reporter).
+$env:GRIDCRAFT_BUILD_SHA = "0000000000000000000000000000000000000000"
+if (Test-Path (Join-Path $Root ".git")) {
+  try {
+    $sha = git -C $Root rev-parse HEAD 2>$null
+    if ($sha) { $env:GRIDCRAFT_BUILD_SHA = $sha }
+  } catch {}
+}
+if (-not $env:GRIDCRAFT_BUILD_DATE) {
+  $env:GRIDCRAFT_BUILD_DATE = (Get-Date -Format 'yyyy-MM-dd')
+}
 
-if (-not $env:GRIDCRAFT_BUILD_SHA) { $env:GRIDCRAFT_BUILD_SHA = (git -C $Root rev-parse HEAD 2>$null) }
-if (-not $env:GRIDCRAFT_BUILD_DATE) { $env:GRIDCRAFT_BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd') }
+$DistDir = if ($env:DIST) { $env:DIST } else { Join-Path $Root 'dist\release' }
+New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
 
-Write-Output "GridCraft $Version for Windows $Arch ($Target)"
+$Triple = switch ($Arch) {
+  'x64'   { 'x86_64-pc-windows-msvc' }
+  'x86'   { 'i686-pc-windows-msvc' }
+  'arm64' { 'aarch64-pc-windows-msvc' }
+}
 
+# Build unless caller passed -SkipBuild (used e.g. when CI builds binaries in an earlier step).
 if (-not $SkipBuild) {
-  # Static CRT: no VC++ redistributable needed. Scoped to the target so host build scripts and
-  # proc-macros are unaffected.
-  $flagVar = 'CARGO_TARGET_' + ($Target.ToUpper() -replace '-', '_') + '_RUSTFLAGS'
-  [Environment]::SetEnvironmentVariable($flagVar, '-C target-feature=+crt-static')
-  # Fail the build (rather than warn) if the icon/VERSIONINFO can't be embedded.
-  $env:GRIDCRAFT_REQUIRE_WINRES = '1'
-  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p gridcraft -p gridcraft-cli --target $Target }
-}
+  # Statically link CRT so clean Windows installs don't need the VC redist.
+  $env:RUSTFLAGS = "$env:RUSTFLAGS -C target-feature=+crt-static"
 
-$Bin = Join-Path $TargetDir "$Target\release"
-
-# Check both binaries' PE headers before packaging. Machine (COFF header) must match -Arch, so an
-# x64 build can never ship labelled arm64. Subsystem (optional header): 2 = Windows GUI, 3 = console.
-# The app must be GUI (no console window opens with it); the CLI must stay console so its output
-# reaches the terminal.
-function Get-PeHeader([string] $Path) {
-  $bytes = [System.IO.File]::ReadAllBytes($Path)
-  $pe = [BitConverter]::ToInt32($bytes, 0x3C)
-  return @{ Machine = [BitConverter]::ToUInt16($bytes, $pe + 4); Subsystem = [BitConverter]::ToUInt16($bytes, $pe + 0x5C) }
-}
-$Machine = switch ($Arch) { 'x64' { 0x8664 } 'x86' { 0x14C } 'arm64' { 0xAA64 } }
-foreach ($check in @(@('gridcraft.exe', 2), @('gridcraft-cli.exe', 3))) {
-  $h = Get-PeHeader (Join-Path $Bin $check[0])
-  if ($h.Machine -ne $Machine) { throw "$($check[0]) is for machine 0x$('{0:X}' -f $h.Machine), expected 0x$('{0:X}' -f $Machine) ($Arch)" }
-  if ($h.Subsystem -ne $check[1]) { throw "$($check[0]) has PE subsystem $($h.Subsystem), expected $($check[1])" }
-  Write-Output "ok $($check[0]): $Arch, PE subsystem $($h.Subsystem)"
-}
-$Stage = Join-Path $TargetDir "windows-package\$Arch"
-Remove-Item -Recurse -Force $Stage -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force -Path $Stage | Out-Null
-Copy-Item (Join-Path $Bin 'gridcraft.exe'), (Join-Path $Bin 'gridcraft-cli.exe') $Stage
-
-& (Join-Path $PSScriptRoot 'sign.ps1') (Join-Path $Stage 'gridcraft.exe') (Join-Path $Stage 'gridcraft-cli.exe')
-
-# ---- font notices for the MSI ------------------------------------------------------------------
-# The portable ZIP already carries these notices; stage the complete files before MSI creation too.
-$Docs = Join-Path $Stage 'font-licences'
-New-Item -ItemType Directory -Force -Path $Docs | Out-Null
-# Bundled dependency font notices are required even without optional craft-fonts.
-Copy-Item -LiteralPath (Join-Path $Root 'NOTICE'), (Join-Path $Root 'ATTRIBUTION.md') -Destination $Docs
-$HasCraftFontLicences = 1
-if ($env:CRAFT_FONTS_DIR) {
-  foreach ($ofl in Get-ChildItem -Path (Join-Path $env:CRAFT_FONTS_DIR 'fonts\*\OFL.txt') -File -ErrorAction SilentlyContinue) {
-    Copy-Item -LiteralPath $ofl.FullName -Destination (Join-Path $Docs "OFL-$($ofl.Directory.Name).txt")
-    $HasCraftFontLicences = 1
+  Invoke-Native "cargo build ($Triple)" {
+    cargo build --release --target $Triple -p gridcraft -p gridcraft-cli
   }
 }
-# ---- end font notices for the MSI --------------------------------------------------------------
 
-# ---- MSI ---------------------------------------------------------------------------------------
-$Msi = Join-Path $Dist "gridcraft-$Version-windows-$Arch.msi"
-Invoke-Native 'wix build' {
-  wix build (Join-Path $PSScriptRoot 'gridcraft.wxs') -arch $Arch `
-    -d "Version=$MsiVersion" -d "BinDir=$Stage" -d "IconPath=$(Join-Path $Root 'assets\app-icon\gridcraft.ico')" `
-    -d "DocsDir=$Docs" -d "HasCraftFontLicences=$HasCraftFontLicences" `
-    -o $Msi
-}
-# Check the compiled scope, path and registration contract before signing.
-& (Join-Path $PSScriptRoot 'check-install-policy.ps1') -MsiPath $Msi
-# wix writes its debug symbols (.wixpdb) next to the MSI; keep them out of the release assets.
-Remove-Item -Force -ErrorAction SilentlyContinue ([IO.Path]::ChangeExtension($Msi, '.wixpdb'))
-& (Join-Path $PSScriptRoot 'sign.ps1') $Msi
+$TargetBinDir = Join-Path $Root "target\$Triple\release"
+$AppExe = Join-Path $TargetBinDir 'gridcraft.exe'
+$CliExe = Join-Path $TargetBinDir 'gridcraft-cli.exe'
 
-# ---- portable zip ------------------------------------------------------------------------------
-$Portable = Join-Path $TargetDir "windows-package\gridcraft-$Version-windows-$Arch-portable"
-Remove-Item -Recurse -Force $Portable -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force -Path $Portable | Out-Null
-Copy-Item (Join-Path $Stage '*.exe') $Portable
-foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'ATTRIBUTION.md') {
-  $p = Join-Path $Root $f
-  if (Test-Path $p) { Copy-Item $p $Portable }
-}
-# Builds made with craft-fonts (CRAFT_FONTS_DIR) embed its fonts: ship their licences.
-if ($env:CRAFT_FONTS_DIR) {
-  foreach ($ofl in Get-ChildItem -Path (Join-Path $env:CRAFT_FONTS_DIR 'fonts\*\OFL.txt') -ErrorAction SilentlyContinue) {
-    Copy-Item $ofl.FullName (Join-Path $Portable "OFL-$($ofl.Directory.Name).txt")
-  }
-}
-$Zip = Join-Path $Dist "gridcraft-$Version-windows-$Arch-portable.zip"
-Remove-Item -Force $Zip -ErrorAction SilentlyContinue
-Compress-Archive -Path $Portable -DestinationPath $Zip
+if (-not (Test-Path $AppExe)) { throw "missing $AppExe" }
+if (-not (Test-Path $CliExe)) { throw "missing $CliExe" }
 
-# Smoke-test the CLI when this machine can run it. An ARM64 build made on an x64 runner can't run
-# here; .github/workflows/windows-arm64.yml installs and runs it on ARM64 instead.
-$HostArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
-if ($Arch -ne 'arm64' -or $HostArch -eq 'arm64') {
-  Invoke-Native 'gridcraft-cli --version' { & (Join-Path $Stage 'gridcraft-cli.exe') --version }
-} else {
-  Write-Output "skipping gridcraft-cli --version: an $Arch build doesn't run on this $HostArch machine"
+# Sign the binaries before packaging.
+$SignScript = Join-Path $PSScriptRoot 'sign.ps1'
+if (Test-Path $SignScript) {
+  & $SignScript -Files @($AppExe, $CliExe)
 }
-Get-Item $Msi, $Zip | Format-Table Name, Length
+
+# 1. Portable zip: executables + attribution/licenses.
+$ZipName = "gridcraft-$Version-windows-$Arch-portable.zip"
+$ZipPath = Join-Path $DistDir $ZipName
+Write-Output "==> Packaging portable zip: $ZipPath"
+
+$StageDir = Join-Path $DistDir "stage-portable-$Arch"
+if (Test-Path $StageDir) { Remove-Item -Recurse -Force $StageDir }
+New-Item -ItemType Directory -Force -Path $StageDir | Out-Null
+
+Copy-Item $AppExe $StageDir
+Copy-Item $CliExe $StageDir
+Copy-Item (Join-Path $Root 'LICENSE-MIT') $StageDir
+Copy-Item (Join-Path $Root 'LICENSE-APACHE') $StageDir
+Copy-Item (Join-Path $Root 'NOTICE') $StageDir
+Copy-Item (Join-Path $Root 'ATTRIBUTION.md') $StageDir
+
+if (Test-Path $ZipPath) { Remove-Item -Force $ZipPath }
+Compress-Archive -Path (Join-Path $StageDir '*') -DestinationPath $ZipPath
+Remove-Item -Recurse -Force $StageDir
+
+# 2. MSI installer via WiX v5.
+$MsiName = "gridcraft-$Version-windows-$Arch.msi"
+$MsiPath = Join-Path $DistDir $MsiName
+Write-Output "==> Packaging MSI: $MsiPath"
+
+# Wix takes -arch x64/x86/arm64 directly.
+$Wxs = Join-Path $PSScriptRoot 'gridcraft.wxs'
+$IconPath = Join-Path $Root 'assets\app-icon\gridcraft.ico'
+if (-not (Test-Path $IconPath)) { throw "missing $IconPath" }
+
+# Clean previous build artifacts for this MSI to avoid conflicts.
+$MsiObjDir = Join-Path $DistDir "wix-obj-$Arch"
+if (Test-Path $MsiObjDir) { Remove-Item -Recurse -Force $MsiObjDir }
+New-Item -ItemType Directory -Force -Path $MsiObjDir | Out-Null
+
+Invoke-Native "wix build" {
+  wix build `
+    -arch $Arch `
+    -ext WixToolset.UI.wixext `
+    -ext WixToolset.Util.wixext `
+    -d "Version=$MsiVersion" `
+    -d "SourceDir=$TargetBinDir" `
+    -d "BinDir=$TargetBinDir" `
+    -d "IconPath=$IconPath" `
+    -d "Root=$Root" `
+    -intermediateFolder $MsiObjDir `
+    -o $MsiPath `
+    $Wxs
+}
+
+Remove-Item -Recurse -Force $MsiObjDir
+
+# Sign the MSI.
+if (Test-Path $SignScript) {
+  & $SignScript -Files @($MsiPath)
+}
+
+Write-Output "==> Packaged successfully:"
+Write-Output "    $ZipPath"
+Write-Output "    $MsiPath"

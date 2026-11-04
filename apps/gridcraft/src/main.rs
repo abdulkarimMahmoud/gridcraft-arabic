@@ -323,6 +323,9 @@ fn main() -> eframe::Result<()> {
     // Stamp the startup workbook's author from the persisted user name.
     if app.session.documents().is_empty() {
         app.session.new_workbook();
+        if app.ui.language.is_rtl() {
+            let _ = app.session.execute("view.rightToLeft", serde_json::json!({"on": true}));
+        }
     }
     app.after_engine(); // Show warnings from the sample.
     // Files named on the command line (a double-click on Windows and Linux) open as File › Open
